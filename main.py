@@ -351,7 +351,7 @@ class DataProcessor:
         """
         try:
             logging.info("Starting data processing.")
-            files = glob(os.path.join(directory, '*.csv'))
+            files = sorted(glob(os.path.join(directory, '*.csv')))
             for file in tqdm(files, desc="Processing files"):
                 logging.info(f"Starting data processing for {file}")
                 data = DataProcessor.read_data(file)
