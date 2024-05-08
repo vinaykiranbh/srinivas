@@ -16,8 +16,8 @@ from datetime import datetime
 from glob import glob
 from tqdm import tqdm
 import argparse
-from Common import ConnectionHelper
-from Common import GlobalConfig
+# from Common import ConnectionHelper
+# from Common import GlobalConfig
 
 def setup():
     logs_directory = "logs"
@@ -47,7 +47,7 @@ def db_connection():
     except Exception as e:
         logging.error(f"Failed to connect to database spark environment: {e}")
         exit(1)
-odbc_cursor=db_connection()
+# odbc_cursor=db_connection()
 
 class DataProcessor:
     
@@ -176,25 +176,23 @@ class DataProcessor:
                             "CLUB", "LP", "FRIENDS", "PRESCHOOL", "PARK"])
             
             tax_ids = data['Tax ID'].unique().tolist()
-            db_results = DataProcessor.lookup_records(tax_ids)
-            db_dict ={result['SSN']:result for result in db_results}
+            # db_results = DataProcessor.lookup_records(tax_ids)
+            # db_dict ={result['SSN']:result for result in db_results}
 
             for index, row in data.iterrows():
                 keyword_exception = any(keyword in str(row['Organization First Name']).upper() for keyword in keywords)
                 address_exception = pd.isna(row['Organization Street Line1 Address']) or str(row['Organization Street Line1 Address']).strip() == ''
                 taxid_exception = '-' in str(row['Tax ID'])
 
-                db_record = db_dict.get(str(row['Tax ID']))
+                # db_record = db_dict.get(str(row['Tax ID']))
 
                 
-                if db_record:
-                    data.at[index, 'Organization First Name'] =db_record['FIRST_NAME']
-                    data.at[index, 'Organization Middle Name'] =db_record['MID_NAME']
-                    data.at[index, 'Organization Last Name'] =db_record['LAST_NAME']
-                    data.at[index, 'comments'] += ' Names aligned with database.'
-                    # # else:
-                    #     data.at[index, 'exception'] = True
-                    #     data.at[index, 'comments'] += ' Name mismatch with database.'
+                # if db_record:
+                #     data.at[index, 'Organization First Name'] =db_record['FIRST_NAME']
+                #     data.at[index, 'Organization Middle Name'] =db_record['MID_NAME']
+                #     data.at[index, 'Organization Last Name'] =db_record['LAST_NAME']
+                #     data.at[index, 'comments'] += ' Names aligned with database.'
+
 
                 if any([keyword_exception, address_exception, taxid_exception]):
                     data.at[index, 'exception'] = True
@@ -213,17 +211,18 @@ class DataProcessor:
             raise
 
     @staticmethod
-    def remove_special_characters(data):
+    def remove_initial_characters(data):
         """
         Removes special characters from the data to standardize and clean the text fields.
         This is particularly useful for preparing data for analysis, reporting, or further processing stages.
         """
         try:
-            data.replace({'[-,.#]': ''}, regex=True, inplace=True)
+            data.replace({'[,.#]': ''}, regex=True, inplace=True)
             return data
         except Exception as e:
-            logging.error(f"Method Failed: remove_special_characters, Error: {e}")
+            logging.error(f"Method Failed: remove_initial_characters, Error: {e}")
             raise
+
 
     @staticmethod
     def remove_duplicates(data):
@@ -303,8 +302,6 @@ class DataProcessor:
         Formats the data into a fixed-width formatted string for each record.
         This format is used for consistent file outputs that can be easily read and processed by systems that require fixed-width inputs.
         """
-        
-        
         try:
             if not isinstance(data, pd.DataFrame):
                 raise TypeError("Expected a DataFrame but got a different datatype.")
@@ -323,14 +320,14 @@ class DataProcessor:
                 state = str(row['Organization State']).ljust(2)[:2]
                 zip_code = str(row['Organization Zip code']).split('-')[0].ljust(5)[:5]
                 zip_extension = (row['Organization Zip code'].split('-')[1] if '-' in str(row['Organization Zip code']) else '').ljust(4)[:4]
-                print(zip_extension)
                 try:
                     start_date = pd.to_datetime(row['Start Date of Contract'], format='%m/%d/%Y').strftime('%Y%m%d')
                 except ValueError as e:
                     logging.error(f"Method Failed: format_output, Error: Error parsing date {row['Start Date of Contract']}: {e}")
                     start_date = 'InvalidDate'
                 try:
-                    amount = f"{int(float(str(row['Amount of Contract']).replace('$', '').replace(',', '')) * 100):011d}"
+                    
+                    amount = f"{int(str(row['Amount of Contract']).replace('$', '').replace(',', '')):011d}".rjust(11)
                 except ValueError:
                     logging.error(f"Method Failed: format_output, Error: Failed to convert amount for record: {row['Amount of Contract']}")
                     amount = 'InvalidAmount'
@@ -367,12 +364,12 @@ class DataProcessor:
                         previous_data = DataProcessor.read_previous_outputs(previous_paths)
                         
                     data, exceptions = DataProcessor.clean_and_handle_exceptions(data)
-                    data = DataProcessor.remove_special_characters(data)
+                    data = DataProcessor.remove_initial_characters(data)
                     data = DataProcessor.remove_duplicates(data)
                     data, found_duplicates = DataProcessor.check_for_duplicates(data, previous_data)
                     exceptions = pd.concat([exceptions, found_duplicates], ignore_index=True)
                     exceptions = exceptions.drop(columns=['exception','extra_col_Unnamed: 11'])
-                    formatted_data = DataProcessor.format_output(data)                    
+                    formatted_data = DataProcessor.format_output(data)            
                     DataProcessor.write_output(formatted_data, output_dir, exceptions, exception_dir, date,directory)
                     DataProcessor.archive_files(file, archive_dir)
                     source_row_count = data.shape[0] + exceptions.shape[0]
