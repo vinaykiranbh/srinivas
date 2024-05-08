@@ -1,0 +1,7 @@
+2024-05-02 19:30:38,001 - INFO - Logging is configured.
+2024-05-02 19:30:38,001 - INFO - Starting data processing.
+2024-05-02 19:30:38,010 - INFO - Starting data processing for sourcefiles/sourcefile.csv
+2024-05-02 19:30:38,015 - INFO - Data read successfully from sourcefiles/sourcefile.csv with 8 rows.
+2024-05-02 19:30:38,016 - INFO - File from FEB_01_24 requires comparison with files from: Jan_01_24, Jan_15_24
+2024-05-02 19:30:38,016 - INFO - Comparing data with files from ['Jan_01_24', 'Jan_15_24']
+2024-05-02 19:30:38,016 - WARNING - File not found: output/2024/output_JAN_01_24.txt

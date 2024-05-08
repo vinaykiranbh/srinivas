@@ -1,0 +1,8 @@
+2024-05-08 17:44:21,240 - INFO - Logging is configured.
+2024-05-08 17:44:21,240 - INFO - Starting data processing.
+2024-05-08 17:44:21,252 - INFO - Starting data processing for ./sourcefiles/sourcefile.csv
+2024-05-08 17:44:21,258 - INFO - Data read successfully from ./sourcefiles/sourcefile.csv with 8 rows.
+2024-05-08 17:44:21,259 - INFO - Processing January 1st file. No previous file comparison needed.
+2024-05-08 17:44:21,266 - INFO - No previous data to compare against for duplicates.
+2024-05-08 17:44:21,270 - ERROR - Method Failed: remove_spcl_characters, Error: str.replace() takes no keyword arguments
+2024-05-08 17:44:21,270 - CRITICAL - Critical error during processing: str.replace() takes no keyword arguments

@@ -1,0 +1,10 @@
+2024-05-06 10:29:51,469 - INFO - Logging is configured.
+2024-05-06 10:29:51,470 - INFO - Starting data processing.
+2024-05-06 10:29:51,482 - INFO - Starting data processing for sourcefiles/sourcefile.csv
+2024-05-06 10:29:51,487 - INFO - Data read successfully from sourcefiles/sourcefile.csv with 8 rows.
+2024-05-06 10:29:51,487 - INFO - Processing January 1st file. No previous file comparison needed.
+2024-05-06 10:29:51,495 - INFO - No previous data to compare against for duplicates.
+2024-05-06 10:29:51,504 - INFO - Output and exceptions written successfully to output/2024/output_CALSAWS_DE_542_REPORT_JAN_01_24.txt and exceptions/2024/exceptions_CALSAWS_DE_542_REPORT_JAN_01_24.csv.
+2024-05-06 10:29:51,505 - INFO - File sourcefiles/sourcefile.csv archived successfully.
+2024-05-06 10:29:51,505 - INFO - Validation for sourcefiles/sourcefile.csv: Source Rows = 8, Output Rows = 7, Exception Rows = 1
+2024-05-06 10:29:51,505 - INFO - Data processing completed for sourcefiles/sourcefile.csv
