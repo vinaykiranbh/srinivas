@@ -1,8 +1,0 @@
-2024-05-08 17:58:51,418 - INFO - Logging is configured.
-2024-05-08 17:58:51,418 - INFO - Starting data processing.
-2024-05-08 17:58:51,426 - INFO - Starting data processing for ./sourcefiles/sourcefile.csv
-2024-05-08 17:58:51,432 - INFO - Data read successfully from ./sourcefiles/sourcefile.csv with 8 rows.
-2024-05-08 17:58:51,433 - INFO - Processing January 1st file. No previous file comparison needed.
-2024-05-08 17:58:51,439 - INFO - No previous data to compare against for duplicates.
-2024-05-08 17:58:51,444 - ERROR - Method Failed: format_output, Error: can only concatenate str (not "int") to str
-2024-05-08 17:58:51,444 - CRITICAL - Critical error during processing: can only concatenate str (not "int") to str

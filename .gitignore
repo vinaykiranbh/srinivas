@@ -1,5 +1,6 @@
+#ignore these directories 
 archive/
 exceptions/
-logs/
-output/
+output/ 
 sourcefiles/
+logs/

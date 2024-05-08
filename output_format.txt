@@ -1,2 +1,0 @@
-PIC123456789John            ADoe                           123 Elm St                              Somewhere                CA1234512342024010100000060000         
-PIC987654321Jane            BSmith                         456 Oak St Apt 204                      Anywhere                 NY9876598762024011500000160000         
