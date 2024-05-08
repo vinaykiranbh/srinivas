@@ -211,7 +211,7 @@ class DataProcessor:
             raise
 
     @staticmethod
-    def remove_initial_characters(data):
+    def remove_special_characters(data):
         """
         Removes special characters from the data to standardize and clean the text fields.
         This is particularly useful for preparing data for analysis, reporting, or further processing stages.
@@ -220,7 +220,7 @@ class DataProcessor:
             data.replace({'[,.#]': ''}, regex=True, inplace=True)
             return data
         except Exception as e:
-            logging.error(f"Method Failed: remove_initial_characters, Error: {e}")
+            logging.error(f"Method Failed: remove_special_characters, Error: {e}")
             raise
 
 
@@ -364,7 +364,7 @@ class DataProcessor:
                         previous_data = DataProcessor.read_previous_outputs(previous_paths)
                         
                     data, exceptions = DataProcessor.clean_and_handle_exceptions(data)
-                    data = DataProcessor.remove_initial_characters(data)
+                    data = DataProcessor.remove_special_characters(data)
                     data = DataProcessor.remove_duplicates(data)
                     data, found_duplicates = DataProcessor.check_for_duplicates(data, previous_data)
                     exceptions = pd.concat([exceptions, found_duplicates], ignore_index=True)
