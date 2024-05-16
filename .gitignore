@@ -4,3 +4,4 @@ exceptions/
 output/ 
 sourcefiles/
 logs/
+.DS_Store

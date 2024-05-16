@@ -306,7 +306,9 @@ class DataProcessor:
             if not isinstance(data, pd.DataFrame):
                 raise TypeError("Expected a DataFrame but got a different datatype.")
             data = data.fillna('')
-            formatted_data = ''
+            header = "RIC94600052980000000         COUNTY OF SACRAMENTO                         700 H SREET                             SACRAMENTO               CA95814    9168746329              "
+            footer = ""
+            formatted_data = header + '\n' 
             for index, row in data.iterrows():
                 record_identifier = "PIC".ljust(3)
                 ssn = str(row['Tax ID']).replace('-', '').ljust(9)[:9]
