@@ -371,12 +371,15 @@ class DataProcessor:
                     data, found_duplicates = DataProcessor.check_for_duplicates(data, previous_data)
                     exceptions = pd.concat([exceptions, found_duplicates], ignore_index=True)
                     exceptions = exceptions.drop(columns=['exception','extra_col_Unnamed: 11'])
-                    formatted_data = DataProcessor.format_output(data)            
+                    formatted_data = DataProcessor.format_output(data)
+                    source_row_count = data.shape[0] + exceptions.shape[0]
+                    output_row_count = formatted_data.count('\n') - 1
+                    exception_row_count = exceptions.shape[0]
+                    footer = f"Source Rows = {source_row_count}, Output Rows = {output_row_count}, Exception Rows = {exception_row_count}"
+                    formatted_data += '\n' + footer   
                     DataProcessor.write_output(formatted_data, output_dir, exceptions, exception_dir, date,directory)
                     DataProcessor.archive_files(file, archive_dir)
-                    source_row_count = data.shape[0] + exceptions.shape[0]
-                    output_row_count = DataProcessor.count_rows(os.path.join(output_dir, datetime.now().strftime('%Y'), f"output_{date}.txt"))
-                    exception_row_count = exceptions.shape[0]
+                    
                     logging.info(f"Validation for {file}: Source Rows = {source_row_count}, Output Rows = {output_row_count}, Exception Rows = {exception_row_count}")
                     assert source_row_count == output_row_count + exception_row_count, "Row count mismatch: Source does not equal Output + Exceptions"
                 else:
