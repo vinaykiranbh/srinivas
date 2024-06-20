@@ -16,11 +16,12 @@ from datetime import datetime
 from glob import glob
 from tqdm import tqdm
 import argparse
-# from Common import ConnectionHelper
-# from Common import GlobalConfig
+from Common import ConnectionHelper
+from Common import GlobalConfig
+import sys
 
-def setup():
-    logs_directory = "logs"
+
+def setup(logs_directory):
     os.makedirs(logs_directory, exist_ok=True)
     current_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     log_filename = f"{logs_directory}/dataprocessor_{current_time}.log"
@@ -29,9 +30,6 @@ def setup():
                         format='%(asctime)s - %(levelname)s - %(message)s')
     logging.info("Logging is configured.")
     pd.set_option('display.max_columns', None)
-    
-setup()
-
 
 def db_connection():
     try:        
@@ -47,11 +45,10 @@ def db_connection():
     except Exception as e:
         logging.error(f"Failed to connect to database spark environment: {e}")
         exit(1)
-# odbc_cursor=db_connection()
+
+odbc_cursor = db_connection()
 
 class DataProcessor:
-    
-
 
     @staticmethod
     def extract_date_range(source_file_path):
@@ -64,7 +61,6 @@ class DataProcessor:
             with open(source_file_path, 'r') as file:
                 lines = file.readlines()
                 file_name = lines[0].split(',')[0].strip().upper().replace(' ', '_')
-                
                 date_str = lines[2].split(',')[0].strip().upper().replace('RUN DATE: ', '').strip().split(' ')[0].replace('-', '_').upper()
                 run_date = datetime.strptime(date_str.replace('_', '-'), '%b-%d-%y')
                 output_name = f"{file_name}_{date_str}"
@@ -72,7 +68,7 @@ class DataProcessor:
 
                 if run_date.month == 1 and run_date.day == 1:
                     logging.info("Processing January 1st file. No previous file comparison needed.")
-                    return False, output_name, required_comparisons
+                    return False, output_name, required_comparisons, file_name
                 else:
                     current_year = run_date.year
                     for month in range(1, run_date.month + (1 if run_date.day > 1 else 0)):
@@ -82,7 +78,7 @@ class DataProcessor:
                             comparison_date = datetime(current_year, month, day)
                             required_comparisons.append(comparison_date.strftime('%b_%d_%y'))
                     logging.info(f"File from {output_name} requires comparison with files from: {', '.join(required_comparisons)}")
-                    return True, output_name, required_comparisons
+                    return True, output_name, required_comparisons, file_name
         except Exception as e:
             logging.error(f"Method Failed: extract_date_range, Error: {e}")
             raise
@@ -95,15 +91,15 @@ class DataProcessor:
         """
         try:
             logging.debug(f"Attempting to read data from {source_file_path}.")
-            data = pd.read_csv(source_file_path, skiprows=5,keep_default_na=False,na_filter=False)
+            data = pd.read_csv(source_file_path, skiprows=5, keep_default_na=False, na_filter=False)
 
             if data.empty:
                 raise ValueError(f"No data found in {source_file_path}")
-            
+
             for col in data.columns:
                 if 'Unnamed' in col:
                     new_col_name = f"extra_col_{col.split('_')[-1]}"
-                    data.rename(columns={col:new_col_name},inplace=True)
+                    data.rename(columns={col: new_col_name}, inplace=True)
             logging.info(f"Data read successfully from {source_file_path} with {data.shape[0]} rows.")
             return data
         except Exception as e:
@@ -125,12 +121,11 @@ class DataProcessor:
                         WHERE org.tax_num_identif IN ({tax_id_str});"""
             cursor = odbc_cursor.execute(query)
             results = cursor.fetchall()
-            columns=[col[0] for col in cursor.description]
-            return [ dict(zip(columns,result)) for result in results]
+            columns = [col[0] for col in cursor.description]
+            return [dict(zip(columns, result)) for result in results]
         except Exception as e:
             logging.error(f"Method Failed : lookup_records, Error: {e}")
             raise
-
 
     @staticmethod
     def correct_misalignment(data):
@@ -152,9 +147,9 @@ class DataProcessor:
                             data.at[index, prev_col] = row[current_col]
                             data.at[index, current_col] = pd.NA
                     
-                    last_col = actual_columns[-1]
-                    if pd.isna(row[last_col]):
-                        data.at[index, last_col] = pd.NA
+                    # last_col = actual_columns[-1]
+                    # if pd.isna(row[last_col]):
+                    #     data.at[index, last_col] = pd.NA
             return data
         except Exception as e:
             logging.error(f"Method Failed: correct_misalignment, Error: {e}")
@@ -164,44 +159,48 @@ class DataProcessor:
     def clean_and_handle_exceptions(data):
         """
         Processes data to identify and handle exceptions based on predefined conditions such as keywords in organization names,
-        invalid addresses, or mismatches with database records for first and last names.
+        invalid addresses, etc.
+        Adds a new column to indicate whether a row should be reprocessed after manual review.
         """
         try:
             data = DataProcessor.correct_misalignment(data)
             data['exception'] = False
             data['comments'] = ''
+            data['Reprocess_Flag'] = False  # Add the new column for reprocessing
 
-            keywords = set(["CENTER", "INC", "LLC", "CARE", "COMMONS", "OFFICE", "KIDS", 
+            keywords = set(["CENTER", "INC", "LLC", "CARE", "COMMONS", "OFFICE", "KIDS",
                             "LEARNING", "RANCH", "APARTMENTS", "KIDZ", "PROPERTIES", "BRIDGE",
-                            "CLUB", "LP", "FRIENDS", "PRESCHOOL", "PARK"])
-            
+                            "CLUB", "LP", "FRIENDS", "PRESCHOOL", "PARK", "KNOWLEDGE", "PORTSIDE",
+                            "PROPERTY", "ADVANCED", "WORLD", "MONTESS", "ACADEMY", "PETITE",
+                            "HONEST", "INVESTMENT", "SCHOOL", "PLAYHOUSE", "TYMES", "PLAYSCHOOL",
+                            "DAYCARE", "COUNTRY", "VILLA", "WAKING", "MONTESSORI"])
+
             tax_ids = data['Tax ID'].unique().tolist()
-            # db_results = DataProcessor.lookup_records(tax_ids)
-            # db_dict ={result['SSN']:result for result in db_results}
+            db_results = DataProcessor.lookup_records(tax_ids)
+            db_dict = {result['SSN']: result for result in db_results}
 
             for index, row in data.iterrows():
                 keyword_exception = any(keyword in str(row['Organization First Name']).upper() for keyword in keywords)
                 address_exception = pd.isna(row['Organization Street Line1 Address']) or str(row['Organization Street Line1 Address']).strip() == ''
                 taxid_exception = '-' in str(row['Tax ID'])
 
-                # db_record = db_dict.get(str(row['Tax ID']))
-
-                
-                # if db_record:
-                #     data.at[index, 'Organization First Name'] =db_record['FIRST_NAME']
-                #     data.at[index, 'Organization Middle Name'] =db_record['MID_NAME']
-                #     data.at[index, 'Organization Last Name'] =db_record['LAST_NAME']
-                #     data.at[index, 'comments'] += ' Names aligned with database.'
-
+                db_record = db_dict.get(str(row['Tax ID']))
+                if db_record:
+                    data.at[index, 'Organization First Name'] = db_record['FIRST_NAME']
+                    data.at[index, 'Organization Middle Name'] = db_record['MID_NAME']
+                    data.at[index, 'Organization Last Name'] = db_record['LAST_NAME']
+                else:
+                    taxid_exception = True
 
                 if any([keyword_exception, address_exception, taxid_exception]):
                     data.at[index, 'exception'] = True
+                    data.at[index, 'Reprocess_Flag'] = True  # Mark for reprocessing
                     if keyword_exception:
                         data.at[index, 'comments'] += ' This is an Organisation TaxID.'
                     if address_exception:
                         data.at[index, 'comments'] += ' Missing Line1 Address.'
                     if taxid_exception:
-                        data.at[index, 'comments'] += ' Invalid Tax ID.'
+                        data.at[index, 'comments'] += ' Invalid Tax ID or Tax ID not found in database.'
 
             exceptions = data[data['exception']].copy()
             clean_data = data[~data['exception']].copy()
@@ -222,7 +221,6 @@ class DataProcessor:
         except Exception as e:
             logging.error(f"Method Failed: remove_special_characters, Error: {e}")
             raise
-
 
     @staticmethod
     def remove_duplicates(data):
@@ -306,14 +304,16 @@ class DataProcessor:
             if not isinstance(data, pd.DataFrame):
                 raise TypeError("Expected a DataFrame but got a different datatype.")
             data = data.fillna('')
-            header = "RIC94600052980000000         COUNTY OF SACRAMENTO                         700 H SREET                             SACRAMENTO               CA95814    9168746329              "
+            formatted_data = ''
+            header = "RIC94600052980039217         COUNTY OF SACRAMENTO                         700 H SREET                             SACRAMENTO               CA95814    9168746329               "
             footer = ""
-            formatted_data = header + '\n' 
+            formatted_data = header + '\n'
+            
             for index, row in data.iterrows():
                 record_identifier = "PIC".ljust(3)
                 ssn = str(row['Tax ID']).replace('-', '').ljust(9)[:9]
                 first_name = str(row['Organization First Name']).ljust(16)[:16]
-                middle_initial = (str(row['Organization Middle Name'])[:1] if pd.notna(row['Organization Middle Name']) else '').ljust(1)
+                middle_initial = ' '#(str(row['Organization Middle Name'])[:1] if pd.notna(row['Organization Middle Name']) else '').ljust(1)
                 last_name = str(row['Organization Last Name']).ljust(30)[:30]
                 address_line1 = str(row['Organization Street Line1 Address'])
                 address_line2 = str(row['Organization Street Line2 Address']) if pd.notna(row['Organization Street Line2 Address']) else ''
@@ -328,16 +328,15 @@ class DataProcessor:
                     logging.error(f"Method Failed: format_output, Error: Error parsing date {row['Start Date of Contract']}: {e}")
                     start_date = 'InvalidDate'
                 try:
-                    
                     amount = f"{int(str(row['Amount of Contract']).replace('$', '').replace(',', '')):011d}".rjust(11)
                 except ValueError:
                     logging.error(f"Method Failed: format_output, Error: Failed to convert amount for record: {row['Amount of Contract']}")
                     amount = 'InvalidAmount'
                 contract_exp = ' ' * 8
                 ongoing_contract = 'Y'
-                blank = ' ' * 8
-                formatted_row = (record_identifier + ssn + first_name + middle_initial + last_name +
-                                address + city + state + zip_code + zip_extension +
+                blank = ' ' * 12
+                formatted_row = (record_identifier.upper() + ssn + first_name.upper() + middle_initial + last_name.upper() +
+                                address.upper() + city.upper() + state.upper() + zip_code.upper() + zip_extension +
                                 start_date + amount + contract_exp + ongoing_contract + blank)
                 formatted_data += formatted_row + '\n'
             return formatted_data
@@ -353,38 +352,51 @@ class DataProcessor:
         """
         try:
             logging.info("Starting data processing.")
-            files = sorted(glob(os.path.join(directory, '*.csv')))
-            for file in tqdm(files, desc="Processing files"):
-                logging.info(f"Starting data processing for {file}")
-                data = DataProcessor.read_data(file)
-                if data is not None:
-                    previous_data = pd.DataFrame()
-                    comparison_req, date, comparison = DataProcessor.extract_date_range(file)
-                    if comparison_req:
-                        logging.info(f"Comparing data with files from {comparison}")
-                        previous_paths = [os.path.join(output_dir,datetime.now().strftime('%Y'),f'output_{item.upper()}.txt') for item in comparison]
-                        previous_data = DataProcessor.read_previous_outputs(previous_paths)
-                        
-                    data, exceptions = DataProcessor.clean_and_handle_exceptions(data)
-                    data = DataProcessor.remove_special_characters(data)
-                    data = DataProcessor.remove_duplicates(data)
-                    data, found_duplicates = DataProcessor.check_for_duplicates(data, previous_data)
-                    exceptions = pd.concat([exceptions, found_duplicates], ignore_index=True)
-                    exceptions = exceptions.drop(columns=['exception','extra_col_Unnamed: 11'])
-                    formatted_data = DataProcessor.format_output(data)
-                    source_row_count = data.shape[0] + exceptions.shape[0]
-                    output_row_count = formatted_data.count('\n') - 1
-                    exception_row_count = exceptions.shape[0]
-                    footer = f"Source Rows = {source_row_count}, Output Rows = {output_row_count}, Exception Rows = {exception_row_count}"
-                    formatted_data += '\n' + footer   
-                    DataProcessor.write_output(formatted_data, output_dir, exceptions, exception_dir, date,directory)
-                    DataProcessor.archive_files(file, archive_dir)
-                    
-                    logging.info(f"Validation for {file}: Source Rows = {source_row_count}, Output Rows = {output_row_count}, Exception Rows = {exception_row_count}")
-                    assert source_row_count == output_row_count + exception_row_count, "Row count mismatch: Source does not equal Output + Exceptions"
-                else:
-                    raise ValueError(f"Data is Empty for {file}")
-                logging.info(f"Data processing completed for {file}")
+            
+            files_count= len([entry for entry in os.listdir(directory) if os.path.isfile(os.path.join(directory, entry))])
+
+            if files_count>0:
+                
+                files = sorted(glob(os.path.join(directory, '*.csv')))
+
+                for file in tqdm(files, desc="Processing files"):
+                    print(file)
+                    logging.info(f"Starting data processing for {file}")
+                    data = DataProcessor.read_data(file)
+                    if data is not None:
+                        previous_data = pd.DataFrame()
+                        comparison_req, date, comparison, file_name = DataProcessor.extract_date_range(file)
+                        if comparison_req:
+                            logging.info(f"Comparing data with files from {comparison}")
+                            previous_paths = [os.path.join(output_dir, datetime.now().strftime('%Y'), f'output_{file_name}_{item.upper()}.txt') for item in comparison]
+                            previous_data = DataProcessor.read_previous_outputs(previous_paths)
+                            
+                        data, exceptions = DataProcessor.clean_and_handle_exceptions(data)
+                        data = DataProcessor.remove_special_characters(data)
+                        data = DataProcessor.remove_duplicates(data)
+                        data, found_duplicates = DataProcessor.check_for_duplicates(data, previous_data)
+                        exceptions = pd.concat([exceptions, found_duplicates], ignore_index=True)
+                        exceptions = exceptions.drop(columns=['exception', 'extra_col_Unnamed: 11'])
+                        formatted_data = DataProcessor.format_output(data)
+
+                        source_row_count = data.shape[0] + exceptions.shape[0]
+                        output_row_count = formatted_data.count('\n') - 1
+                        exception_row_count = exceptions.shape[0]
+                        footer_rec_identifier = "TIC"
+                        footer_pic_count = str(output_row_count).zfill(11)
+                        footer_blank = ' ' * 162
+                        footer = footer_rec_identifier + footer_pic_count + footer_blank
+                        formatted_data += footer
+                        DataProcessor.write_output(formatted_data, output_dir, exceptions, exception_dir, date, directory)
+                        DataProcessor.archive_files(file, archive_dir)
+                        logging.info(f"Validation for {file}: Source Rows = {source_row_count}, Output Rows = {output_row_count}, Exception Rows = {exception_row_count}")
+                        assert source_row_count == output_row_count + exception_row_count, "Row count mismatch: Source does not equal Output + Exceptions"
+                    else:
+                        raise ValueError(f"Data is Empty for {file}")
+                    logging.info(f"Data processing completed for {file}")
+            else:
+                logging.critical(f"No files to be processed.")
+                exit(0)
         except Exception as e:
             logging.critical(f"Critical error during processing: {e}")
             exit(1)
@@ -410,16 +422,14 @@ class DataProcessor:
         These files are read using fixed-width formatting, which matches the structure of the output files.
         """
         previous_data = pd.DataFrame()
-        
         try:
-            previous_data = pd.DataFrame()
             colspecs = [
                 (0, 12)
             ]
             colnames = ['PIC']
             for file_path in previous_files:
                 if os.path.exists(file_path):
-                    temp_data = pd.read_fwf(file_path, colspecs=colspecs, header=None, names=colnames)
+                    temp_data = pd.read_fwf(file_path, colspecs=colspecs, header=None, names=colnames, skiprows=1, skipfooter=1, engine='python')
                     previous_data = pd.concat([previous_data, temp_data], ignore_index=True)
                 else:
                     logging.warning(f"File not found: {file_path}")
@@ -449,7 +459,7 @@ class DataProcessor:
             duplicates = current_data[current_data['is_duplicate']].copy()
             non_duplicates = current_data[~current_data['is_duplicate']]
             duplicates['comments'] = 'Exists in Previous file'
-            non_duplicates.drop(columns=['ModifiedTaxID'], inplace=True)
+            non_duplicates.drop(columns=['ModifiedTaxID', 'is_duplicate'], inplace=True)
             duplicates.drop(columns=['is_duplicate', 'ModifiedTaxID'], inplace=True)
             logging.info(f"Found {len(duplicates)} duplicates in the current dataset.")
             return non_duplicates, duplicates
@@ -463,30 +473,33 @@ def parse_args():
     parser.add_argument('--archive_dir', type=str, default='archive', help='Directory to archive processed files')
     parser.add_argument('--exception_dir', type=str, default='exceptions', help='Directory to store exceptions')
     parser.add_argument('--output_dir', type=str, default='output', help='Directory to store output files')
+    parser.add_argument('--logs_dir', type=str, default='logs', help='Directory to store log files')
     return parser.parse_args()
 
-# if __name__ == "__main__":
-# # # """Example: python Csv2Txt_2.py --directory "\\dha\userdata\Projects\FTP-Download\DOF\DE542 Report\sourcefiles" --archive_dir "\\dha\userdata\Projects\FTP-Download\DOF\DE542 Report\archive" --exception_dir "\\dha\userdata\Projects\FTP-Download\DOF\DE542 Report\exceptions" --output_dir "\\dha\userdata\Projects\FTP-Download\DOF\DE542 Report\output"
-# # # """    
-#     try:
-#         args = parse_args()
-#         processor_args = {
-#             "directory": args.directory,
-#             "archive_dir": args.archive_dir,
-#             "exception_dir": args.exception_dir,
-#             "output_dir": args.output_dir
-#         }
-#         DataProcessor.process_data(**processor_args)
-#     except Exception as e:
-#         logging.critical(f"An error occurred during data processing: {str(e)}")
-#         exit(1)
-        
-        
 if __name__ == "__main__":
-    processor_args = {
-        "directory": "./sourcefiles",
-        "archive_dir": "./archive",
-        "exception_dir": "./exceptions",
-        "output_dir": "./output"
-    }
-    DataProcessor.process_data(**processor_args)
+# """Example: python Csv2Txt_main.py --directory "\\dha\userdata\Projects\FTP-Download\DOF\DE542 Report\sourcefiles" --archive_dir "\\dha\userdata\Projects\FTP-Download\DOF\DE542 Report\archive" --exception_dir "\\dha\userdata\Projects\FTP-Download\DOF\DE542 Report\exceptions" --output_dir "\\dha\userdata\Projects\FTP-Download\DOF\DE542 Report\output" --logs_dir "\\dha\userdata\Projects\FTP-Download\DOF\DE542 Report\logs" 
+# """    
+    try:
+        args = parse_args()
+        setup(args.logs_dir)
+        processor_args = {
+            "directory": args.directory,
+            "archive_dir": args.archive_dir,
+            "exception_dir": args.exception_dir,
+            "output_dir": args.output_dir
+        }
+        DataProcessor.process_data(**processor_args)
+    except Exception as e:
+        logging.critical(f"An error occurred during data processing: {str(e)}")
+        exit(1)
+        
+        
+# if __name__ == "__main__":
+#     processor_args = {
+#         "directory": "./sourcefiles",
+#         "archive_dir": "./archive",
+#         "exception_dir": "./exceptions",
+#         "output_dir": "./output"
+#     }
+#     DataProcessor.process_data(**processor_args)
+        
